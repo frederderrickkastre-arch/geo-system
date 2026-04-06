@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - JWT_SECRET=geo-production-secret-change-me
+      - JWT_EXPIRES_IN=7d
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASSWORD=geo_db_password
+      - DB_NAME=geo_system
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - AI_PROVIDER=deepseek
+      - AI_API_KEY=${AI_API_KEY:-}
+      - AI_MODEL=deepseek-chat
+      - UPLOAD_DIR=/app/uploads
+    volumes:
+      - upload_data:/app/uploads
+    depends_on:
+      - mysql
+      - redis
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.0
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=geo_db_password
+      - MYSQL_DATABASE=geo_system
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+  redis_data:
+  upload_data:
