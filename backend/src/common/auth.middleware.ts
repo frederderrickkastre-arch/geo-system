@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
+import { config } from './config'
 
 export interface AuthRequest extends Request {
   userId?: number
@@ -14,7 +15,7 @@ export function authMiddleware(req: AuthRequest, res: Response, next: NextFuncti
 
   const token = authHeader.slice(7)
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'geo-secret') as any
+    const decoded = jwt.verify(token, config.jwt.secret) as any
     req.userId = decoded.userId
     req.username = decoded.username
     next()

@@ -2,13 +2,17 @@ import { Router } from 'express'
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcryptjs'
 import { success, error } from '../../common/response'
-import { queryOne } from '../../common/db'
+import { execute, queryOne } from '../../common/db'
+import { config } from '../../common/config'
+import { authLimiter } from '../../common/rateLimit'
+import { recordAudit } from '../../common/audit'
+import { validatePassword, validateUsername } from '../../common/password'
 
 export const authRouter = Router()
 
-authRouter.post('/login', async (req, res) => {
+authRouter.post('/login', authLimiter, async (req, res) => {
+  const { username, password } = req.body || {}
   try {
-    const { username, password } = req.body
     if (!username || !password) {
       return res.json(error('请输入账号和密码'))
     }
@@ -18,24 +22,27 @@ authRouter.post('/login', async (req, res) => {
       [username]
     )
     if (!user) {
+      await recordAudit({ username, action: 'login.fail', detail: 'unknown user' }, req)
       return res.json(error('账号或密码错误'))
     }
     if (user.status === 0) {
+      await recordAudit({ userId: user.id, username: user.username, action: 'login.blocked' }, req)
       return res.json(error('账号已被禁用'))
     }
 
-    const valid = bcrypt.compareSync(password, user.password)
+    const valid = await bcrypt.compare(password, user.password)
     if (!valid) {
+      await recordAudit({ userId: user.id, username: user.username, action: 'login.fail', detail: 'bad password' }, req)
       return res.json(error('账号或密码错误'))
     }
 
-    const secret = process.env.JWT_SECRET || 'geo-secret'
-    const expiresIn = process.env.JWT_EXPIRES_IN || '7d'
     const token = jwt.sign(
       { userId: user.id, username: user.username },
-      secret,
-      { expiresIn } as jwt.SignOptions
+      config.jwt.secret,
+      { expiresIn: config.jwt.expiresIn } as jwt.SignOptions
     )
+
+    await recordAudit({ userId: user.id, username: user.username, action: 'login.success' }, req)
 
     res.json(success({
       token,
@@ -50,32 +57,43 @@ authRouter.post('/login', async (req, res) => {
       },
     }))
   } catch (e: any) {
+    await recordAudit({ username, action: 'login.fail', detail: e?.message || 'error' }, req)
     res.json(error(e.message || '登录失败'))
   }
 })
 
-authRouter.post('/logout', (_req, res) => {
+authRouter.post('/logout', async (req, res) => {
+  // Token is stateless; just record the intent for audit.
+  await recordAudit({ action: 'logout' }, req)
   res.json(success(null, '退出成功'))
 })
 
-authRouter.post('/register', async (req, res) => {
+authRouter.post('/register', authLimiter, async (req, res) => {
+  const { username, password, nickname } = req.body || {}
   try {
-    const { username, password, nickname } = req.body
     if (!username || !password) {
       return res.json(error('请输入账号和密码'))
     }
+    const nameCheck = validateUsername(username)
+    if (!nameCheck.ok) return res.json(error(nameCheck.msg))
+
+    const pwCheck = validatePassword(password)
+    if (!pwCheck.ok) return res.json(error(pwCheck.msg))
+
     const existing = await queryOne('SELECT id FROM users WHERE username = ?', [username])
     if (existing) {
+      await recordAudit({ username, action: 'register.fail', detail: 'duplicate' }, req)
       return res.json(error('用户名已存在'))
     }
-    const hashed = bcrypt.hashSync(password, 10)
-    const { execute } = await import('../../common/db')
+    const hashed = await bcrypt.hash(password, 12)
     const result = await execute(
       'INSERT INTO users (username, password, nickname) VALUES (?, ?, ?)',
       [username, hashed, nickname || username]
     )
+    await recordAudit({ userId: result.insertId, username, action: 'register.success' }, req)
     res.json(success({ id: result.insertId }, '注册成功'))
   } catch (e: any) {
+    await recordAudit({ username, action: 'register.fail', detail: e?.message || 'error' }, req)
     res.json(error(e.message || '注册失败'))
   }
 })

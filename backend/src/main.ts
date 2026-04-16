@@ -1,7 +1,8 @@
 import express from 'express'
 import cors from 'cors'
+import helmet from 'helmet'
 import path from 'path'
-import dotenv from 'dotenv'
+import { config } from './common/config'
 import { authRouter } from './modules/auth/auth.router'
 import { keywordRouter } from './modules/keyword/keyword.router'
 import { questionRouter } from './modules/question/question.router'
@@ -15,20 +16,37 @@ import { userRouter } from './modules/user/user.router'
 import { toolsRouter } from './modules/tools/tools.router'
 import { uploadRouter } from './modules/upload/upload.router'
 import { authMiddleware } from './common/auth.middleware'
-
-dotenv.config()
+import { generalApiLimiter } from './common/rateLimit'
 
 const app = express()
-const PORT = process.env.PORT || 3001
 
-app.use(cors())
+app.set('trust proxy', 1)
+
+app.use(
+  helmet({
+    // SPA assets are served separately by nginx; relax CSP here so dev tooling
+    // (and image previews from /uploads) keep working without extra config.
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+)
+
+app.use(
+  cors({
+    origin: config.cors.origin,
+    credentials: true,
+  })
+)
+
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true }))
 
-const uploadDir = path.resolve(process.env.UPLOAD_DIR || 'uploads')
+const uploadDir = path.resolve(config.uploadDir)
 app.use('/uploads', express.static(uploadDir))
 
 app.use('/api/auth', authRouter)
+
+app.use('/api', generalApiLimiter)
 
 app.use('/api/keywords', authMiddleware, keywordRouter)
 app.use('/api/questions', authMiddleware, questionRouter)
@@ -46,6 +64,7 @@ app.get('/api/health', (_req, res) => {
   res.json({ code: 200, msg: 'ok', data: { status: 'healthy', timestamp: new Date().toISOString() } })
 })
 
-app.listen(PORT, () => {
-  console.log(`GEO Backend running on http://localhost:${PORT}`)
+app.listen(config.port, () => {
+  // eslint-disable-next-line no-console
+  console.log(`GEO Backend running on http://localhost:${config.port} (env=${config.env})`)
 })
