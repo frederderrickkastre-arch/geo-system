@@ -17,6 +17,7 @@ import { toolsRouter } from './modules/tools/tools.router'
 import { uploadRouter } from './modules/upload/upload.router'
 import { authMiddleware } from './common/auth.middleware'
 import { generalApiLimiter } from './common/rateLimit'
+import { errorHandler, notFoundHandler } from './common/errorHandler'
 
 const app = express()
 
@@ -63,6 +64,9 @@ app.use('/api/upload', authMiddleware, uploadRouter)
 app.get('/api/health', (_req, res) => {
   res.json({ code: 200, msg: 'ok', data: { status: 'healthy', timestamp: new Date().toISOString() } })
 })
+
+app.use('/api', notFoundHandler)
+app.use(errorHandler)
 
 app.listen(config.port, () => {
   // eslint-disable-next-line no-console
