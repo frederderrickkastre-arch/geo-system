@@ -195,7 +195,7 @@ CREATE TABLE selfmedia_outlets (
   industry VARCHAR(100) DEFAULT '',
   region VARCHAR(100) DEFAULT '',
   followers VARCHAR(50) DEFAULT '',
-  reads VARCHAR(50) DEFAULT '',
+  `reads` VARCHAR(50) DEFAULT '',
   verified TINYINT DEFAULT 0,
   official TINYINT DEFAULT 0,
   publish_time VARCHAR(50) DEFAULT '',
