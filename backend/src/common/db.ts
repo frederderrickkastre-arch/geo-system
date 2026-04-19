@@ -61,6 +61,43 @@ export async function paginate<T = any>(
   return { list, total }
 }
 
+// Keyset (a.k.a. seek) pagination. OFFSET-based paging scans and discards
+// every prior row, so p=10000 is 100x slower than p=1 on a deep table.
+// Keyset keeps a cursor ("rows with id < last_seen_id") so cost stays
+// constant per page. Only works with a strictly-ordered indexed column
+// (we use id DESC here); the tradeoff is you can only move forward/back
+// a page at a time, not jump to "page 50".
+export interface KeysetPage<T> {
+  list: T[]
+  // Cursor to pass back for the next page. null once there are no more.
+  nextCursor: number | null
+}
+
+export async function keysetPaginate<T extends { id: number }>(
+  table: string,
+  where: string,
+  params: any[],
+  limit: number,
+  cursor?: number | null
+): Promise<KeysetPage<T>> {
+  const clauses = [where]
+  const args = [...params]
+  if (cursor && cursor > 0) {
+    clauses.push('id < ?')
+    args.push(cursor)
+  }
+  // Fetch limit + 1 so we can tell whether a next page exists without a
+  // separate count query.
+  args.push(limit + 1)
+  const sql = `SELECT * FROM ${table} WHERE ${clauses.join(' AND ')} ORDER BY id DESC LIMIT ?`
+  const rows = await query<T>(sql, args)
+
+  const hasMore = rows.length > limit
+  const list = hasMore ? rows.slice(0, limit) : rows
+  const nextCursor = hasMore ? list[list.length - 1].id : null
+  return { list, nextCursor }
+}
+
 // Transactional helpers bound to a single pooled connection. The callback
 // gets query/queryOne/execute scoped to the transaction; throw anywhere
 // inside and the whole thing rolls back.

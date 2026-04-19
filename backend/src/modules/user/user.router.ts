@@ -1,8 +1,9 @@
 import { Router } from 'express'
-import { success, error, paginated } from '../../common/response'
-import { query, queryOne, paginate } from '../../common/db'
+import { success, error } from '../../common/response'
+import { query, queryOne, keysetPaginate } from '../../common/db'
 import { AuthRequest } from '../../common/auth.middleware'
 import { cached } from '../../common/cache'
+import { validateQuery, z } from '../../common/validate'
 
 export const userRouter = Router()
 
@@ -101,25 +102,42 @@ userRouter.get('/benefits', async (req: AuthRequest, res) => {
   }
 })
 
-userRouter.get('/consumption/points', async (req: AuthRequest, res) => {
-  try {
-    const page = parseInt(req.query.page as string) || 1
-    const pageSize = parseInt(req.query.pageSize as string) || 10
+// Consumption logs grow without bound and are usually scrolled, not jumped
+// through, so keyset pagination avoids the OFFSET linear scan on deep pages.
+// Client pattern: call without `cursor` for page 1, then pass `nextCursor`
+// from each response back as `cursor` for the next page.
+const cursorQuerySchema = z.object({
+  pageSize: z.coerce.number().int().min(1).max(100).default(10),
+  cursor: z.coerce.number().int().positive().optional(),
+})
 
-    const result = await paginate('score_logs', 'user_id = ?', [req.userId], page, pageSize, 'id DESC')
-    res.json(paginated(result.list, result.total, page, pageSize))
+userRouter.get('/consumption/points', validateQuery(cursorQuerySchema), async (req: AuthRequest, res) => {
+  try {
+    const { pageSize, cursor } = req.query as any
+    const result = await keysetPaginate(
+      'score_logs',
+      'user_id = ?',
+      [req.userId],
+      pageSize,
+      cursor
+    )
+    res.json(success({ list: result.list, nextCursor: result.nextCursor, pageSize }))
   } catch (e: any) {
     res.json(error(e.message))
   }
 })
 
-userRouter.get('/consumption/balance', async (req: AuthRequest, res) => {
+userRouter.get('/consumption/balance', validateQuery(cursorQuerySchema), async (req: AuthRequest, res) => {
   try {
-    const page = parseInt(req.query.page as string) || 1
-    const pageSize = parseInt(req.query.pageSize as string) || 10
-
-    const result = await paginate('balance_logs', 'user_id = ?', [req.userId], page, pageSize, 'id DESC')
-    res.json(paginated(result.list, result.total, page, pageSize))
+    const { pageSize, cursor } = req.query as any
+    const result = await keysetPaginate(
+      'balance_logs',
+      'user_id = ?',
+      [req.userId],
+      pageSize,
+      cursor
+    )
+    res.json(success({ list: result.list, nextCursor: result.nextCursor, pageSize }))
   } catch (e: any) {
     res.json(error(e.message))
   }
