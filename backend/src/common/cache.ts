@@ -91,3 +91,14 @@ export async function cachePing(): Promise<boolean> {
     return false
   }
 }
+
+export async function closeCache(): Promise<void> {
+  if (!client) return
+  const c = client
+  client = null
+  try {
+    await c.quit()
+  } catch {
+    c.disconnect()
+  }
+}

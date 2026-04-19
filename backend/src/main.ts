@@ -20,8 +20,8 @@ import { uploadRouter } from './modules/upload/upload.router'
 import { authMiddleware } from './common/auth.middleware'
 import { generalApiLimiter } from './common/rateLimit'
 import { errorHandler, notFoundHandler } from './common/errorHandler'
-import { query } from './common/db'
-import { cachePing } from './common/cache'
+import { closePool, query } from './common/db'
+import { cachePing, closeCache } from './common/cache'
 
 const app = express()
 
@@ -115,17 +115,27 @@ const server = app.listen(config.port, () => {
   logger.info({ port: config.port, env: config.env }, 'GEO Backend listening')
 })
 
-function shutdown(signal: string) {
+let shuttingDown = false
+async function shutdown(signal: string) {
+  if (shuttingDown) return
+  shuttingDown = true
   logger.info({ signal }, 'shutting down')
-  server.close((err) => {
-    if (err) {
-      logger.error({ err }, 'server close failed')
-      process.exit(1)
-    }
-    process.exit(0)
-  })
+
   // hard timeout in case of stuck connections
-  setTimeout(() => process.exit(1), 10_000).unref()
+  const hardTimer = setTimeout(() => {
+    logger.error('shutdown timed out, forcing exit')
+    process.exit(1)
+  }, 10_000)
+  hardTimer.unref()
+
+  server.close(async (err) => {
+    try {
+      if (err) logger.error({ err }, 'server close failed')
+      await Promise.allSettled([closePool(), closeCache()])
+    } finally {
+      process.exit(err ? 1 : 0)
+    }
+  })
 }
-process.on('SIGTERM', () => shutdown('SIGTERM'))
-process.on('SIGINT', () => shutdown('SIGINT'))
+process.on('SIGTERM', () => void shutdown('SIGTERM'))
+process.on('SIGINT', () => void shutdown('SIGINT'))
