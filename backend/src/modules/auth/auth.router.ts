@@ -27,7 +27,7 @@ authRouter.post('/login', authLimiter, validateBody(loginSchema), async (req, re
   try {
 
     const user = await queryOne<any>(
-      'SELECT id, username, password, nickname, avatar, vip_expiry, balance, points, status FROM users WHERE username = ?',
+      'SELECT id, username, password, nickname, avatar, vip_expiry, balance, points, status, role FROM users WHERE username = ?',
       [username]
     )
     if (!user) {
@@ -45,8 +45,9 @@ authRouter.post('/login', authLimiter, validateBody(loginSchema), async (req, re
       return res.json(error('账号或密码错误'))
     }
 
+    const role = user.role === 'admin' ? 'admin' : 'user'
     const token = jwt.sign(
-      { userId: user.id, username: user.username },
+      { userId: user.id, username: user.username, role },
       config.jwt.secret,
       { expiresIn: config.jwt.expiresIn } as jwt.SignOptions
     )
@@ -63,6 +64,7 @@ authRouter.post('/login', authLimiter, validateBody(loginSchema), async (req, re
         vipExpiry: user.vip_expiry || '',
         balance: parseFloat(user.balance) || 0,
         points: user.points || 0,
+        role,
       },
     }))
   } catch (e: any) {

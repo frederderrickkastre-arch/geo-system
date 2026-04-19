@@ -17,7 +17,8 @@ import { dataRouter } from './modules/data/data.router'
 import { userRouter } from './modules/user/user.router'
 import { toolsRouter } from './modules/tools/tools.router'
 import { uploadRouter } from './modules/upload/upload.router'
-import { authMiddleware } from './common/auth.middleware'
+import { adminRouter } from './modules/admin/admin.router'
+import { authMiddleware, requireRole } from './common/auth.middleware'
 import { generalApiLimiter } from './common/rateLimit'
 import { errorHandler, notFoundHandler } from './common/errorHandler'
 import { closePool, query } from './common/db'
@@ -107,6 +108,7 @@ app.use('/api/data', authMiddleware, dataRouter)
 app.use('/api/user', authMiddleware, userRouter)
 app.use('/api/tools', authMiddleware, toolsRouter)
 app.use('/api/upload', authMiddleware, uploadRouter)
+app.use('/api/admin', authMiddleware, requireRole('admin'), adminRouter)
 
 app.use('/api', notFoundHandler)
 app.use(errorHandler)
