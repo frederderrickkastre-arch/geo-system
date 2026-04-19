@@ -1,5 +1,5 @@
-import https from 'https'
-import http from 'http'
+import { aiFetch } from './aiClient'
+import { logger } from './logger'
 
 export interface AIConfig {
   provider: 'deepseek' | 'qianwen' | 'wenxin'
@@ -30,7 +30,9 @@ function getEndpoint(config: AIConfig): { url: string; model: string } {
       }
     case 'wenxin':
       return {
-        url: config.baseUrl || 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/completions',
+        url:
+          config.baseUrl ||
+          'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/completions',
         model: config.model || 'ernie-bot',
       }
     default:
@@ -39,36 +41,6 @@ function getEndpoint(config: AIConfig): { url: string; model: string } {
         model: config.model || 'deepseek-chat',
       }
   }
-}
-
-function httpPost(url: string, headers: Record<string, string>, body: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const parsed = new URL(url)
-    const client = parsed.protocol === 'https:' ? https : http
-    const req = client.request(
-      {
-        hostname: parsed.hostname,
-        port: parsed.port,
-        path: parsed.pathname + parsed.search,
-        method: 'POST',
-        headers: { ...headers, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
-      },
-      (res) => {
-        let data = ''
-        res.on('data', (chunk) => (data += chunk))
-        res.on('end', () => {
-          if (res.statusCode && res.statusCode >= 400) {
-            reject(new Error(`AI API error ${res.statusCode}: ${data}`))
-          } else {
-            resolve(data)
-          }
-        })
-      }
-    )
-    req.on('error', reject)
-    req.write(body)
-    req.end()
-  })
 }
 
 export async function generateArticle(
@@ -101,15 +73,21 @@ export async function generateArticle(
     max_tokens: 2000,
   })
 
-  try {
-    const responseText = await httpPost(endpoint.url, {
-      Authorization: `Bearer ${config.apiKey}`,
-    }, requestBody)
+  const result = await aiFetch(endpoint.url, {
+    headers: { Authorization: `Bearer ${config.apiKey}` },
+    body: requestBody,
+  })
 
-    const response = JSON.parse(responseText)
+  if (!result.ok) {
+    logger.warn({ status: result.status }, 'AI call failed, falling back to template')
+    return generateFallbackArticle(prompt, distillWord)
+  }
+
+  try {
+    const response = JSON.parse(result.body)
     return response.choices?.[0]?.message?.content || generateFallbackArticle(prompt, distillWord)
-  } catch (err: any) {
-    console.error('AI API call failed:', err.message)
+  } catch (err) {
+    logger.warn({ err }, 'AI response parse failed, falling back to template')
     return generateFallbackArticle(prompt, distillWord)
   }
 }
