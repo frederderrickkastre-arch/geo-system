@@ -333,6 +333,5 @@ CREATE TABLE audit_logs (
   INDEX idx_ip_time (ip, created_at)
 );
 
--- 插入默认管理演示账号
-INSERT INTO users (username, password, nickname, vip_expiry, status, verified, real_name) VALUES
-('geo123', '$2a$10$rQkG7Kw0Z6CxVc2xDg8Kke2m1Yq5Xh0d3L4VJ5dN7uK8JxR3m9Hy', 'GEO演示', '2066-06-06', 1, 1, '演示号');
+-- Demo seed data is NOT part of the canonical schema. Apply manually in
+-- non-production environments from database/seeds/demo_user.sql.
