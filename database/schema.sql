@@ -17,10 +17,12 @@ CREATE TABLE users (
   balance DECIMAL(10,2) DEFAULT 0.00,
   points INT DEFAULT 0,
   status TINYINT DEFAULT 1 COMMENT '1=正常 0=禁用',
+  role ENUM('admin','user') NOT NULL DEFAULT 'user',
   verified TINYINT DEFAULT 0 COMMENT '0=未认证 1=已认证',
   real_name VARCHAR(50) DEFAULT '',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_role (role)
 );
 
 -- 关键词表
@@ -33,7 +35,8 @@ CREATE TABLE keywords (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_user (user_id),
-  INDEX idx_keyword (keyword)
+  INDEX idx_keyword (keyword),
+  INDEX idx_user_id_desc (user_id, id DESC)
 );
 
 -- 写作标题/问题表
@@ -46,7 +49,8 @@ CREATE TABLE questions (
   index_status ENUM('indexed','none') DEFAULT 'none',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_user (user_id),
-  INDEX idx_keyword (keyword_id)
+  INDEX idx_keyword (keyword_id),
+  INDEX idx_user_id_desc (user_id, id DESC)
 );
 
 -- 图库分类表
@@ -68,7 +72,8 @@ CREATE TABLE images (
   url VARCHAR(1000) NOT NULL,
   size INT DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_category (category_id)
+  INDEX idx_category (category_id),
+  INDEX idx_user_created (user_id, created_at DESC)
 );
 
 -- 企业知识库表
@@ -80,7 +85,8 @@ CREATE TABLE knowledge_bases (
   content LONGTEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_user (user_id)
+  INDEX idx_user (user_id),
+  INDEX idx_user_id_desc (user_id, id DESC)
 );
 
 -- 写作指令/提示词表
@@ -91,7 +97,8 @@ CREATE TABLE writing_prompts (
   type ENUM('article','title','traffic') DEFAULT 'article',
   content LONGTEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_user (user_id)
+  INDEX idx_user (user_id),
+  INDEX idx_user_id_desc (user_id, id DESC)
 );
 
 -- 文章分类表
@@ -102,7 +109,8 @@ CREATE TABLE article_categories (
   sort INT DEFAULT 0,
   article_count INT DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_user (user_id)
+  INDEX idx_user (user_id),
+  INDEX idx_user_id_desc (user_id, id DESC)
 );
 
 -- AI写作任务表
@@ -120,7 +128,8 @@ CREATE TABLE ai_tasks (
   last_write_at DATETIME DEFAULT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_user (user_id)
+  INDEX idx_user (user_id),
+  INDEX idx_user_status (user_id, status)
 );
 
 -- 文章表
@@ -136,7 +145,8 @@ CREATE TABLE articles (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_user (user_id),
-  INDEX idx_task (task_id)
+  INDEX idx_task (task_id),
+  INDEX idx_user_status_created (user_id, status, created_at DESC)
 );
 
 -- 爆文复刻表
@@ -149,7 +159,8 @@ CREATE TABLE hot_articles (
   rewritten_content LONGTEXT,
   rewrite_at DATETIME DEFAULT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_user (user_id)
+  INDEX idx_user (user_id),
+  INDEX idx_user_id_desc (user_id, id DESC)
 );
 
 -- 批量复刻任务表
@@ -184,7 +195,8 @@ CREATE TABLE media_outlets (
   link_type VARCHAR(50) DEFAULT '',
   special_industry VARCHAR(100) DEFAULT '',
   status TINYINT DEFAULT 1,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_status_industry (status, industry)
 );
 
 -- 自媒体大V表
@@ -203,7 +215,8 @@ CREATE TABLE selfmedia_outlets (
   price DECIMAL(10,2) DEFAULT 0.00,
   notes TEXT,
   status TINYINT DEFAULT 1,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_status_platform (status, platform)
 );
 
 -- 投稿记录表
@@ -219,7 +232,9 @@ CREATE TABLE submissions (
   status ENUM('pending','published','rejected') DEFAULT 'pending',
   publish_url VARCHAR(1000) DEFAULT '',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_user (user_id)
+  INDEX idx_user (user_id),
+  INDEX idx_user_status_created (user_id, status, created_at DESC),
+  INDEX idx_media (media_type, media_id)
 );
 
 -- 个人自媒体账号表
@@ -262,7 +277,9 @@ CREATE TABLE platform_indexing (
   query_time DATETIME DEFAULT CURRENT_TIMESTAMP,
   screenshot_url VARCHAR(1000) DEFAULT '',
   INDEX idx_user (user_id),
-  INDEX idx_platform (platform)
+  INDEX idx_platform (platform),
+  INDEX idx_user_keyword_time (user_id, keyword, query_time DESC),
+  INDEX idx_user_platform_time (user_id, platform, query_time DESC)
 );
 
 -- 点数消耗记录表
@@ -272,7 +289,8 @@ CREATE TABLE score_logs (
   project VARCHAR(200) DEFAULT '',
   points INT DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_user (user_id)
+  INDEX idx_user (user_id),
+  INDEX idx_user_created (user_id, created_at DESC)
 );
 
 -- 余额变动记录表
@@ -283,7 +301,8 @@ CREATE TABLE balance_logs (
   amount DECIMAL(10,2) DEFAULT 0.00,
   balance DECIMAL(10,2) DEFAULT 0.00,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_user (user_id)
+  INDEX idx_user (user_id),
+  INDEX idx_user_created (user_id, created_at DESC)
 );
 
 -- 用户权益配额表
@@ -301,6 +320,20 @@ CREATE TABLE user_quotas (
   INDEX idx_user (user_id)
 );
 
--- 插入默认管理演示账号
-INSERT INTO users (username, password, nickname, vip_expiry, status, verified, real_name) VALUES
-('geo123', '$2a$10$rQkG7Kw0Z6CxVc2xDg8Kke2m1Yq5Xh0d3L4VJ5dN7uK8JxR3m9Hy', 'GEO演示', '2066-06-06', 1, 1, '演示号');
+-- 审计日志表
+CREATE TABLE audit_logs (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id INT DEFAULT NULL,
+  username VARCHAR(50) DEFAULT NULL,
+  action VARCHAR(64) NOT NULL,
+  detail VARCHAR(500) DEFAULT NULL,
+  ip VARCHAR(64) DEFAULT NULL,
+  user_agent VARCHAR(500) DEFAULT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_user (user_id),
+  INDEX idx_action_time (action, created_at),
+  INDEX idx_ip_time (ip, created_at)
+);
+
+-- Demo seed data is NOT part of the canonical schema. Apply manually in
+-- non-production environments from database/seeds/demo_user.sql.

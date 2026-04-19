@@ -1,8 +1,20 @@
 import { Router } from 'express'
 import { success, error, paginated } from '../../common/response'
-import { query, queryOne, execute, paginate } from '../../common/db'
+import { query, queryOne, execute, paginate, withTransaction } from '../../common/db'
 import { AuthRequest } from '../../common/auth.middleware'
 import { generateArticle } from '../../common/ai.service'
+import { logger } from '../../common/logger'
+import { validateBody, z } from '../../common/validate'
+
+const taskCreateSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  distillWord: z.string().trim().max(200).optional().default(''),
+  maxCount: z.coerce.number().int().min(1).max(500).optional().default(10),
+  knowledgeBaseId: z.coerce.number().int().positive().nullable().optional(),
+  promptId: z.coerce.number().int().positive().nullable().optional(),
+})
+
+const taskUpdateSchema = taskCreateSchema.partial()
 
 export const articleRouter = Router()
 
@@ -181,13 +193,12 @@ articleRouter.get('/tasks', async (req: AuthRequest, res) => {
   }
 })
 
-articleRouter.post('/tasks', async (req: AuthRequest, res) => {
+articleRouter.post('/tasks', validateBody(taskCreateSchema), async (req: AuthRequest, res) => {
   try {
     const { name, distillWord, maxCount, knowledgeBaseId, promptId } = req.body
-    if (!name) return res.json(error('任务名称不能为空'))
     const result = await execute(
       'INSERT INTO ai_tasks (user_id, name, distill_word, max_count, knowledge_base_id, prompt_id) VALUES (?, ?, ?, ?, ?, ?)',
-      [req.userId, name, distillWord || '', maxCount || 10, knowledgeBaseId || null, promptId || null]
+      [req.userId, name, distillWord, maxCount, knowledgeBaseId ?? null, promptId ?? null]
     )
     const item = await queryOne('SELECT * FROM ai_tasks WHERE id = ?', [result.insertId])
     res.json(success(item))
@@ -196,12 +207,20 @@ articleRouter.post('/tasks', async (req: AuthRequest, res) => {
   }
 })
 
-articleRouter.put('/tasks/:id', async (req: AuthRequest, res) => {
+articleRouter.put('/tasks/:id', validateBody(taskUpdateSchema), async (req: AuthRequest, res) => {
   try {
     const { name, distillWord, maxCount, knowledgeBaseId, promptId } = req.body
     await execute(
       'UPDATE ai_tasks SET name = COALESCE(?, name), distill_word = COALESCE(?, distill_word), max_count = COALESCE(?, max_count), knowledge_base_id = ?, prompt_id = ? WHERE id = ? AND user_id = ?',
-      [name, distillWord, maxCount, knowledgeBaseId || null, promptId || null, req.params.id, req.userId]
+      [
+        name ?? null,
+        distillWord ?? null,
+        maxCount ?? null,
+        knowledgeBaseId ?? null,
+        promptId ?? null,
+        req.params.id,
+        req.userId,
+      ]
     )
     const item = await queryOne('SELECT * FROM ai_tasks WHERE id = ?', [req.params.id])
     res.json(success(item))
@@ -319,51 +338,117 @@ articleRouter.delete('/:id', async (req: AuthRequest, res) => {
 
 articleRouter.post('/tasks/:id/run', async (req: AuthRequest, res) => {
   try {
-    const task = await queryOne<any>('SELECT * FROM ai_tasks WHERE id = ? AND user_id = ?', [req.params.id, req.userId])
-    if (!task) return res.json(error('任务不存在'))
-    if (task.status === 'running') return res.json(error('任务正在执行中'))
+    // Atomically claim the task: only transitions to 'running' succeed when
+    // the current status is NOT already running. Closes the SELECT/UPDATE
+    // race that would otherwise let a double-click spawn two generators.
+    const claim = await execute(
+      "UPDATE ai_tasks SET status = 'running' WHERE id = ? AND user_id = ? AND status != 'running'",
+      [req.params.id, req.userId]
+    )
+    if (claim.affectedRows === 0) {
+      // Distinguish "not found" from "already running" by a follow-up read.
+      const existing = await queryOne<any>(
+        'SELECT status FROM ai_tasks WHERE id = ? AND user_id = ?',
+        [req.params.id, req.userId]
+      )
+      return res.json(error(existing ? '任务正在执行中' : '任务不存在'))
+    }
 
-    await execute('UPDATE ai_tasks SET status = ? WHERE id = ?', ['running', task.id])
+    const task = await queryOne<any>(
+      'SELECT * FROM ai_tasks WHERE id = ? AND user_id = ?',
+      [req.params.id, req.userId]
+    )
 
     const knowledgeContent = task.knowledge_base_id
-      ? (await queryOne<any>('SELECT content FROM knowledge_bases WHERE id = ?', [task.knowledge_base_id]))?.content || ''
+      ? (
+          await queryOne<any>('SELECT content FROM knowledge_bases WHERE id = ?', [
+            task.knowledge_base_id,
+          ])
+        )?.content || ''
       : ''
 
     const promptContent = task.prompt_id
-      ? (await queryOne<any>('SELECT content FROM writing_prompts WHERE id = ?', [task.prompt_id]))?.content || ''
+      ? (
+          await queryOne<any>('SELECT content FROM writing_prompts WHERE id = ?', [task.prompt_id])
+        )?.content || ''
       : '请撰写一篇高质量的SEO文章'
 
     res.json(success({ message: '任务已启动' }))
 
-    ;(async () => {
-      try {
-        const remaining = task.max_count - task.created_count
-        const toCreate = Math.min(remaining, 5)
-
-        for (let i = 0; i < toCreate; i++) {
-          const userPrompt = `${promptContent}\n\n关键词：${task.distill_word}\n\n请生成第 ${task.created_count + i + 1} 篇独特的文章。`
-          const content = await generateArticle(userPrompt, knowledgeContent, task.distill_word)
-          const title = content.split('\n').find((l: string) => l.trim())?.replace(/^#+\s*/, '') || `${task.distill_word} - 文章${task.created_count + i + 1}`
-          const wordCount = content.length
-
-          await execute(
-            'INSERT INTO articles (user_id, task_id, title, content, word_count, status) VALUES (?, ?, ?, ?, ?, ?)',
-            [req.userId, task.id, title, content, wordCount, 'draft']
-          )
-          await execute(
-            'UPDATE ai_tasks SET created_count = created_count + 1, last_write_at = NOW() WHERE id = ?',
-            [task.id]
-          )
-        }
-
-        const updatedTask = await queryOne<any>('SELECT * FROM ai_tasks WHERE id = ?', [task.id])
-        const newStatus = (updatedTask?.created_count || 0) >= task.max_count ? 'completed' : 'pending'
-        await execute('UPDATE ai_tasks SET status = ? WHERE id = ?', [newStatus, task.id])
-      } catch (err: any) {
-        await execute('UPDATE ai_tasks SET status = ?, error_msg = ? WHERE id = ?', ['failed', err.message, task.id])
-      }
-    })()
+    // Kick off generation in the background. Errors are logged + written to
+    // ai_tasks.error_msg so the user's next poll can see the failure.
+    void runTaskGeneration({
+      taskId: task.id,
+      userId: req.userId!,
+      distillWord: task.distill_word,
+      maxCount: task.max_count,
+      createdCount: task.created_count,
+      knowledgeContent,
+      promptContent,
+    })
   } catch (e: any) {
     res.json(error(e.message))
   }
 })
+
+interface TaskRunContext {
+  taskId: number
+  userId: number
+  distillWord: string
+  maxCount: number
+  createdCount: number
+  knowledgeContent: string
+  promptContent: string
+}
+
+function extractTitle(content: string, fallback: string): string {
+  const firstLine = content.split('\n').find((l) => l.trim())
+  const cleaned = firstLine?.replace(/^#+\s*/, '').trim()
+  return cleaned || fallback
+}
+
+async function runTaskGeneration(ctx: TaskRunContext): Promise<void> {
+  const BATCH_MAX = 5
+  try {
+    const remaining = ctx.maxCount - ctx.createdCount
+    const toCreate = Math.min(remaining, BATCH_MAX)
+
+    for (let i = 0; i < toCreate; i++) {
+      const seq = ctx.createdCount + i + 1
+      const userPrompt = `${ctx.promptContent}\n\n关键词：${ctx.distillWord}\n\n请生成第 ${seq} 篇独特的文章。`
+      const content = await generateArticle(userPrompt, ctx.knowledgeContent, ctx.distillWord)
+      const title = extractTitle(content, `${ctx.distillWord} - 文章${seq}`)
+
+      // Article insert + task counter bump commit together. Previously a
+      // crash between the two would leave created_count out of sync with
+      // actual rows in articles.
+      await withTransaction(async (tx) => {
+        await tx.execute(
+          'INSERT INTO articles (user_id, task_id, title, content, word_count, status) VALUES (?, ?, ?, ?, ?, ?)',
+          [ctx.userId, ctx.taskId, title, content, content.length, 'draft']
+        )
+        await tx.execute(
+          'UPDATE ai_tasks SET created_count = created_count + 1, last_write_at = NOW() WHERE id = ?',
+          [ctx.taskId]
+        )
+      })
+    }
+
+    const updated = await queryOne<any>(
+      'SELECT created_count FROM ai_tasks WHERE id = ?',
+      [ctx.taskId]
+    )
+    const newStatus = (updated?.created_count || 0) >= ctx.maxCount ? 'completed' : 'pending'
+    await execute('UPDATE ai_tasks SET status = ?, error_msg = NULL WHERE id = ?', [
+      newStatus,
+      ctx.taskId,
+    ])
+  } catch (err: any) {
+    logger.error({ err, taskId: ctx.taskId }, 'task generation failed')
+    await execute('UPDATE ai_tasks SET status = ?, error_msg = ? WHERE id = ?', [
+      'failed',
+      err?.message || 'unknown error',
+      ctx.taskId,
+    ]).catch(() => undefined)
+  }
+}

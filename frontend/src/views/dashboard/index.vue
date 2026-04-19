@@ -95,7 +95,7 @@
 <script setup lang="ts">
 import { ref, onMounted, markRaw } from 'vue'
 import { useUserStore } from '@/stores/user'
-import * as echarts from 'echarts'
+import echarts, { graphic } from '@/utils/echarts'
 import {
   MagicStick, EditPen, Promotion, Search, DataAnalysis, Setting,
   Wallet, Monitor, Key, ArrowRight, Document, Picture, ChatLineSquare,
@@ -136,7 +136,7 @@ function initCharts() {
         data: [0, 0, 2, 5, 3, 8, 0],
         type: 'line',
         smooth: true,
-        areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+        areaStyle: { color: new graphic.LinearGradient(0, 0, 0, 1, [
           { offset: 0, color: 'rgba(124,58,237,0.3)' },
           { offset: 1, color: 'rgba(124,58,237,0.02)' },
         ])},
@@ -158,7 +158,7 @@ function initCharts() {
         data: [0, 1, 0, 3, 2, 6, 0],
         type: 'line',
         smooth: true,
-        areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+        areaStyle: { color: new graphic.LinearGradient(0, 0, 0, 1, [
           { offset: 0, color: 'rgba(59,130,246,0.3)' },
           { offset: 1, color: 'rgba(59,130,246,0.02)' },
         ])},
