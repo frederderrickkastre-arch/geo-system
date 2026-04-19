@@ -2,8 +2,14 @@ import { Router } from 'express'
 import { success, error, paginated } from '../../common/response'
 import { query, queryOne, execute, paginate } from '../../common/db'
 import { AuthRequest } from '../../common/auth.middleware'
+import { cached } from '../../common/cache'
 
 export const mediaRouter = Router()
+
+// Catalogs are admin-managed and shared across all users, so the TTL can be
+// generous. They dominate the homepage list views, so caching has the best
+// hit rate of any endpoint in the app.
+const CATALOG_TTL = 300
 
 // ============ Web Media ============
 
@@ -11,16 +17,18 @@ mediaRouter.get('/web', async (req: AuthRequest, res) => {
   try {
     const page = parseInt(req.query.page as string) || 1
     const pageSize = parseInt(req.query.pageSize as string) || 10
-    const search = req.query.search as string
+    const search = (req.query.search as string) || ''
 
-    let where = 'status = 1'
-    const params: any[] = []
-    if (search) {
-      where += ' AND name LIKE ?'
-      params.push(`%${search}%`)
-    }
-
-    const result = await paginate('media_outlets', where, params, page, pageSize, 'id ASC')
+    const key = `media:web:${search}:p${page}:s${pageSize}`
+    const result = await cached(key, CATALOG_TTL, async () => {
+      let where = 'status = 1'
+      const params: any[] = []
+      if (search) {
+        where += ' AND name LIKE ?'
+        params.push(`%${search}%`)
+      }
+      return paginate('media_outlets', where, params, page, pageSize, 'id ASC')
+    })
     res.json(paginated(result.list, result.total, page, pageSize))
   } catch (e: any) {
     res.json(error(e.message))
@@ -33,16 +41,18 @@ mediaRouter.get('/self', async (req: AuthRequest, res) => {
   try {
     const page = parseInt(req.query.page as string) || 1
     const pageSize = parseInt(req.query.pageSize as string) || 10
-    const search = req.query.search as string
+    const search = (req.query.search as string) || ''
 
-    let where = 'status = 1'
-    const params: any[] = []
-    if (search) {
-      where += ' AND name LIKE ?'
-      params.push(`%${search}%`)
-    }
-
-    const result = await paginate('selfmedia_outlets', where, params, page, pageSize, 'id ASC')
+    const key = `media:self:${search}:p${page}:s${pageSize}`
+    const result = await cached(key, CATALOG_TTL, async () => {
+      let where = 'status = 1'
+      const params: any[] = []
+      if (search) {
+        where += ' AND name LIKE ?'
+        params.push(`%${search}%`)
+      }
+      return paginate('selfmedia_outlets', where, params, page, pageSize, 'id ASC')
+    })
     res.json(paginated(result.list, result.total, page, pageSize))
   } catch (e: any) {
     res.json(error(e.message))
