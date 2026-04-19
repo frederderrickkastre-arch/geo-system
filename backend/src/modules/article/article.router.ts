@@ -4,6 +4,17 @@ import { query, queryOne, execute, paginate, withTransaction } from '../../commo
 import { AuthRequest } from '../../common/auth.middleware'
 import { generateArticle } from '../../common/ai.service'
 import { logger } from '../../common/logger'
+import { validateBody, z } from '../../common/validate'
+
+const taskCreateSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  distillWord: z.string().trim().max(200).optional().default(''),
+  maxCount: z.coerce.number().int().min(1).max(500).optional().default(10),
+  knowledgeBaseId: z.coerce.number().int().positive().nullable().optional(),
+  promptId: z.coerce.number().int().positive().nullable().optional(),
+})
+
+const taskUpdateSchema = taskCreateSchema.partial()
 
 export const articleRouter = Router()
 
@@ -182,13 +193,12 @@ articleRouter.get('/tasks', async (req: AuthRequest, res) => {
   }
 })
 
-articleRouter.post('/tasks', async (req: AuthRequest, res) => {
+articleRouter.post('/tasks', validateBody(taskCreateSchema), async (req: AuthRequest, res) => {
   try {
     const { name, distillWord, maxCount, knowledgeBaseId, promptId } = req.body
-    if (!name) return res.json(error('任务名称不能为空'))
     const result = await execute(
       'INSERT INTO ai_tasks (user_id, name, distill_word, max_count, knowledge_base_id, prompt_id) VALUES (?, ?, ?, ?, ?, ?)',
-      [req.userId, name, distillWord || '', maxCount || 10, knowledgeBaseId || null, promptId || null]
+      [req.userId, name, distillWord, maxCount, knowledgeBaseId ?? null, promptId ?? null]
     )
     const item = await queryOne('SELECT * FROM ai_tasks WHERE id = ?', [result.insertId])
     res.json(success(item))
@@ -197,12 +207,20 @@ articleRouter.post('/tasks', async (req: AuthRequest, res) => {
   }
 })
 
-articleRouter.put('/tasks/:id', async (req: AuthRequest, res) => {
+articleRouter.put('/tasks/:id', validateBody(taskUpdateSchema), async (req: AuthRequest, res) => {
   try {
     const { name, distillWord, maxCount, knowledgeBaseId, promptId } = req.body
     await execute(
       'UPDATE ai_tasks SET name = COALESCE(?, name), distill_word = COALESCE(?, distill_word), max_count = COALESCE(?, max_count), knowledge_base_id = ?, prompt_id = ? WHERE id = ? AND user_id = ?',
-      [name, distillWord, maxCount, knowledgeBaseId || null, promptId || null, req.params.id, req.userId]
+      [
+        name ?? null,
+        distillWord ?? null,
+        maxCount ?? null,
+        knowledgeBaseId ?? null,
+        promptId ?? null,
+        req.params.id,
+        req.userId,
+      ]
     )
     const item = await queryOne('SELECT * FROM ai_tasks WHERE id = ?', [req.params.id])
     res.json(success(item))

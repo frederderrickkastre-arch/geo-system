@@ -7,15 +7,24 @@ import { config } from '../../common/config'
 import { authLimiter } from '../../common/rateLimit'
 import { recordAudit } from '../../common/audit'
 import { validatePassword, validateUsername } from '../../common/password'
+import { validateBody, z } from '../../common/validate'
 
 export const authRouter = Router()
 
-authRouter.post('/login', authLimiter, async (req, res) => {
-  const { username, password } = req.body || {}
+const loginSchema = z.object({
+  username: z.string().trim().min(1, '请输入账号'),
+  password: z.string().min(1, '请输入密码'),
+})
+
+const registerSchema = z.object({
+  username: z.string().trim().min(1),
+  password: z.string().min(1),
+  nickname: z.string().trim().max(100).optional(),
+})
+
+authRouter.post('/login', authLimiter, validateBody(loginSchema), async (req, res) => {
+  const { username, password } = req.body
   try {
-    if (!username || !password) {
-      return res.json(error('请输入账号和密码'))
-    }
 
     const user = await queryOne<any>(
       'SELECT id, username, password, nickname, avatar, vip_expiry, balance, points, status FROM users WHERE username = ?',
@@ -68,12 +77,9 @@ authRouter.post('/logout', async (req, res) => {
   res.json(success(null, '退出成功'))
 })
 
-authRouter.post('/register', authLimiter, async (req, res) => {
-  const { username, password, nickname } = req.body || {}
+authRouter.post('/register', authLimiter, validateBody(registerSchema), async (req, res) => {
+  const { username, password, nickname } = req.body
   try {
-    if (!username || !password) {
-      return res.json(error('请输入账号和密码'))
-    }
     const nameCheck = validateUsername(username)
     if (!nameCheck.ok) return res.json(error(nameCheck.msg))
 
