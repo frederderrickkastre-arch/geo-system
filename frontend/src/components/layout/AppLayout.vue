@@ -9,6 +9,7 @@
       </el-header>
       <el-main class="app-main">
         <router-view />
+        <AppFooter />
       </el-main>
     </el-container>
   </el-container>
@@ -19,6 +20,7 @@ import { computed } from 'vue'
 import { useAppStore } from '@/stores/app'
 import SidebarMenu from './SidebarMenu.vue'
 import HeaderBar from './HeaderBar.vue'
+import AppFooter from './AppFooter.vue'
 
 const appStore = useAppStore()
 const collapsed = computed(() => appStore.sidebarCollapsed)

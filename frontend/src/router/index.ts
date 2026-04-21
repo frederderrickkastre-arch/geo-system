@@ -16,6 +16,24 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '用户登录', public: true },
   },
   {
+    path: '/register',
+    name: 'Register',
+    component: () => import('@/views/register/index.vue'),
+    meta: { title: '注册账号', public: true },
+  },
+  {
+    path: '/legal/terms',
+    name: 'Terms',
+    component: () => import('@/views/legal/terms.vue'),
+    meta: { title: '用户使用协议', public: true },
+  },
+  {
+    path: '/legal/privacy',
+    name: 'Privacy',
+    component: () => import('@/views/legal/privacy.vue'),
+    meta: { title: '隐私政策', public: true },
+  },
+  {
     path: '/',
     component: Layout,
     redirect: '/dashboard',
@@ -210,7 +228,20 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/user/benefits/index.vue'),
         meta: { title: '账号权益' },
       },
+      // 管理员面板
+      {
+        path: 'admin/verifications',
+        name: 'AdminVerifications',
+        component: () => import('@/views/admin/verifications.vue'),
+        meta: { title: '实名认证审核', parent: '管理员面板', adminOnly: true },
+      },
     ],
+  },
+  {
+    path: '/:pathMatch(.*)*',
+    name: 'NotFound',
+    component: () => import('@/views/error/404.vue'),
+    meta: { title: '页面不存在', public: true },
   },
 ]
 

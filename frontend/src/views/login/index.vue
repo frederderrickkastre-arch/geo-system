@@ -19,11 +19,16 @@
             登录
           </el-button>
         </el-form-item>
+        <div class="form-footer">
+          <span>还没有账号？<router-link to="/register" class="link">立即注册</router-link></span>
+        </div>
         <div class="agreement">
           <el-checkbox v-model="form.agree" />
           <span>
             登录视为您已阅读并同意
-            <a href="#" class="link" @click.prevent>《用户使用协议》</a>
+            <router-link to="/legal/terms" class="link">《用户使用协议》</router-link>
+            和
+            <router-link to="/legal/privacy" class="link">《隐私政策》</router-link>
           </span>
         </div>
       </el-form>
@@ -126,6 +131,19 @@ async function handleLogin() {
 
   &:hover {
     opacity: 0.9;
+  }
+}
+
+.form-footer {
+  text-align: center;
+  font-size: 13px;
+  color: #909399;
+  margin-bottom: 12px;
+
+  .link {
+    color: #667eea;
+    text-decoration: none;
+    margin-left: 4px;
   }
 }
 

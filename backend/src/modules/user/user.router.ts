@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import bcrypt from 'bcryptjs'
 import { success, error, paginated } from '../../common/response'
 import { query, queryOne, execute, paginate } from '../../common/db'
 import { AuthRequest } from '../../common/auth.middleware'
@@ -15,7 +16,7 @@ function deriveDeviceCode(userId: number): string {
 userRouter.get('/profile', async (req: AuthRequest, res) => {
   try {
     const user = await queryOne<any>(
-      'SELECT id, username, nickname, avatar, phone, email, vip_expiry, balance, points, verified, real_name FROM users WHERE id = ?',
+      'SELECT id, username, nickname, avatar, phone, email, vip_expiry, balance, points, verified, real_name, role FROM users WHERE id = ?',
       [req.userId]
     )
     if (!user) return res.json(error('用户不存在'))
@@ -31,6 +32,7 @@ userRouter.get('/profile', async (req: AuthRequest, res) => {
       email: user.email,
       verified: user.verified,
       realName: user.real_name,
+      role: user.role || 'user',
       deviceCode: deriveDeviceCode(user.id),
     }))
   } catch (e: any) {
@@ -261,6 +263,75 @@ userRouter.delete('/publish-tasks/:id', async (req: AuthRequest, res) => {
   try {
     await execute('DELETE FROM publish_tasks WHERE id = ? AND user_id = ?', [req.params.id, req.userId])
     res.json(success(null, '删除成功'))
+  } catch (e: any) {
+    res.json(error(e.message))
+  }
+})
+
+// 更新个人资料（昵称/手机/邮箱/头像）
+userRouter.put('/profile', async (req: AuthRequest, res) => {
+  try {
+    const { nickname, phone, email, avatar } = req.body
+    if (phone && !/^1\d{10}$/.test(phone)) return res.json(error('手机号格式不正确'))
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.json(error('邮箱格式不正确'))
+    await execute(
+      `UPDATE users
+       SET nickname = COALESCE(?, nickname),
+           phone = COALESCE(?, phone),
+           email = COALESCE(?, email),
+           avatar = COALESCE(?, avatar)
+       WHERE id = ?`,
+      [nickname, phone, email, avatar, req.userId]
+    )
+    res.json(success(null, '保存成功'))
+  } catch (e: any) {
+    res.json(error(e.message))
+  }
+})
+
+// 修改密码
+userRouter.post('/change-password', async (req: AuthRequest, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body
+    if (!oldPassword || !newPassword) return res.json(error('请输入原密码和新密码'))
+    if (newPassword.length < 6) return res.json(error('新密码至少 6 位'))
+    if (oldPassword === newPassword) return res.json(error('新密码不能与原密码相同'))
+
+    const user = await queryOne<any>('SELECT password FROM users WHERE id = ?', [req.userId])
+    if (!user) return res.json(error('用户不存在'))
+    if (!bcrypt.compareSync(oldPassword, user.password)) {
+      return res.json(error('原密码不正确'))
+    }
+    const hash = bcrypt.hashSync(newPassword, 10)
+    await execute('UPDATE users SET password = ? WHERE id = ?', [hash, req.userId])
+    res.json(success(null, '密码修改成功'))
+  } catch (e: any) {
+    res.json(error(e.message))
+  }
+})
+
+// 充值（Demo：直接写入 balance，生产应接入支付回调）
+userRouter.post('/recharge', async (req: AuthRequest, res) => {
+  try {
+    const amount = Number(req.body.amount)
+    const kind = (req.body.kind as string) || 'balance' // balance | points
+    if (!Number.isFinite(amount) || amount <= 0) return res.json(error('充值金额不合法'))
+    if (amount > 100000) return res.json(error('单次充值不能超过 100000'))
+
+    if (kind === 'points') {
+      const points = Math.round(amount)
+      await execute('UPDATE users SET points = points + ? WHERE id = ?', [points, req.userId])
+      await execute('INSERT INTO score_logs (user_id, project, points) VALUES (?, ?, ?)', [req.userId, '点数充值', points])
+      res.json(success({ kind, amount: points }, '充值成功'))
+    } else {
+      await execute('UPDATE users SET balance = balance + ? WHERE id = ?', [amount, req.userId])
+      const userRow = await queryOne<any>('SELECT balance FROM users WHERE id = ?', [req.userId])
+      await execute(
+        'INSERT INTO balance_logs (user_id, project, amount, balance) VALUES (?, ?, ?, ?)',
+        [req.userId, '账户充值', amount, userRow?.balance || 0]
+      )
+      res.json(success({ kind, amount, balance: parseFloat(userRow?.balance) || 0 }, '充值成功'))
+    }
   } catch (e: any) {
     res.json(error(e.message))
   }
