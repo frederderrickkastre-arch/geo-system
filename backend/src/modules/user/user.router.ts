@@ -5,6 +5,13 @@ import { AuthRequest } from '../../common/auth.middleware'
 
 export const userRouter = Router()
 
+function deriveDeviceCode(userId: number): string {
+  // 根据 userId 衍生一个稳定的 5 位授权码，便于桌面助手绑定。
+  const salt = 3137
+  const code = ((userId * 7919 + salt) % 90000) + 10000
+  return String(code)
+}
+
 userRouter.get('/profile', async (req: AuthRequest, res) => {
   try {
     const user = await queryOne<any>(
@@ -24,6 +31,7 @@ userRouter.get('/profile', async (req: AuthRequest, res) => {
       email: user.email,
       verified: user.verified,
       realName: user.real_name,
+      deviceCode: deriveDeviceCode(user.id),
     }))
   } catch (e: any) {
     res.json(error(e.message))

@@ -98,12 +98,32 @@ dataRouter.get('/query-records', async (req: AuthRequest, res) => {
     const page = parseInt(req.query.page as string) || 1
     const pageSize = parseInt(req.query.pageSize as string) || 10
     const search = req.query.search as string
+    const platform = req.query.platform as string
+    const indexed = req.query.indexed as string
+    const startDate = req.query.startDate as string
+    const endDate = req.query.endDate as string
 
     let where = 'user_id = ?'
     const params: any[] = [req.userId]
     if (search) {
       where += ' AND keyword LIKE ?'
       params.push(`%${search}%`)
+    }
+    if (platform) {
+      where += ' AND platform = ?'
+      params.push(platform)
+    }
+    if (indexed === '0' || indexed === '1') {
+      where += ' AND indexed = ?'
+      params.push(parseInt(indexed))
+    }
+    if (startDate) {
+      where += ' AND query_time >= ?'
+      params.push(`${startDate} 00:00:00`)
+    }
+    if (endDate) {
+      where += ' AND query_time <= ?'
+      params.push(`${endDate} 23:59:59`)
     }
 
     const result = await paginate('platform_indexing', where, params, page, pageSize, 'id DESC')

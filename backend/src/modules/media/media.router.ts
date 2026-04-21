@@ -67,18 +67,38 @@ mediaRouter.post('/submit', async (req: AuthRequest, res) => {
   }
 })
 
+function buildSubmissionFilters(req: AuthRequest, mediaType: string) {
+  const search = req.query.search as string
+  const status = req.query.status as string
+  const startDate = req.query.startDate as string
+  const endDate = req.query.endDate as string
+
+  let where = 'user_id = ? AND media_type = ?'
+  const params: any[] = [req.userId, mediaType]
+  if (search) {
+    where += ' AND (title LIKE ? OR media_name LIKE ?)'
+    params.push(`%${search}%`, `%${search}%`)
+  }
+  if (status) {
+    where += ' AND status = ?'
+    params.push(status)
+  }
+  if (startDate) {
+    where += ' AND created_at >= ?'
+    params.push(`${startDate} 00:00:00`)
+  }
+  if (endDate) {
+    where += ' AND created_at <= ?'
+    params.push(`${endDate} 23:59:59`)
+  }
+  return { where, params }
+}
+
 mediaRouter.get('/web/records', async (req: AuthRequest, res) => {
   try {
     const page = parseInt(req.query.page as string) || 1
     const pageSize = parseInt(req.query.pageSize as string) || 10
-    const search = req.query.search as string
-
-    let where = "user_id = ? AND media_type = 'web'"
-    const params: any[] = [req.userId]
-    if (search) {
-      where += ' AND (title LIKE ? OR media_name LIKE ?)'
-      params.push(`%${search}%`, `%${search}%`)
-    }
+    const { where, params } = buildSubmissionFilters(req, 'web')
 
     const result = await paginate('submissions', where, params, page, pageSize, 'id DESC')
     res.json(paginated(result.list, result.total, page, pageSize))
@@ -91,14 +111,7 @@ mediaRouter.get('/self/records', async (req: AuthRequest, res) => {
   try {
     const page = parseInt(req.query.page as string) || 1
     const pageSize = parseInt(req.query.pageSize as string) || 10
-    const search = req.query.search as string
-
-    let where = "user_id = ? AND media_type = 'self'"
-    const params: any[] = [req.userId]
-    if (search) {
-      where += ' AND (title LIKE ? OR media_name LIKE ?)'
-      params.push(`%${search}%`, `%${search}%`)
-    }
+    const { where, params } = buildSubmissionFilters(req, 'self')
 
     const result = await paginate('submissions', where, params, page, pageSize, 'id DESC')
     res.json(paginated(result.list, result.total, page, pageSize))
@@ -154,14 +167,7 @@ mediaRouter.get('/personal/records', async (req: AuthRequest, res) => {
   try {
     const page = parseInt(req.query.page as string) || 1
     const pageSize = parseInt(req.query.pageSize as string) || 10
-    const search = req.query.search as string
-
-    let where = "user_id = ? AND media_type = 'personal'"
-    const params: any[] = [req.userId]
-    if (search) {
-      where += ' AND (title LIKE ? OR media_name LIKE ?)'
-      params.push(`%${search}%`, `%${search}%`)
-    }
+    const { where, params } = buildSubmissionFilters(req, 'personal')
 
     const result = await paginate('submissions', where, params, page, pageSize, 'id DESC')
     res.json(paginated(result.list, result.total, page, pageSize))
@@ -246,14 +252,7 @@ mediaRouter.get('/seo/records', async (req: AuthRequest, res) => {
   try {
     const page = parseInt(req.query.page as string) || 1
     const pageSize = parseInt(req.query.pageSize as string) || 10
-    const search = req.query.search as string
-
-    let where = "user_id = ? AND media_type = 'seo'"
-    const params: any[] = [req.userId]
-    if (search) {
-      where += ' AND (title LIKE ? OR media_name LIKE ?)'
-      params.push(`%${search}%`, `%${search}%`)
-    }
+    const { where, params } = buildSubmissionFilters(req, 'seo')
 
     const result = await paginate('submissions', where, params, page, pageSize, 'id DESC')
     res.json(paginated(result.list, result.total, page, pageSize))

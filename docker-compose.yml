@@ -19,12 +19,13 @@ services:
       - "3001:3001"
     environment:
       - PORT=3001
-      - JWT_SECRET=geo-production-secret-change-me
-      - JWT_EXPIRES_IN=7d
+      # JWT_SECRET 必须通过环境变量覆盖，不要直接提交明文到仓库
+      - JWT_SECRET=${JWT_SECRET:?请在 .env 或部署环境中设置 JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-7d}
       - DB_HOST=mysql
       - DB_PORT=3306
       - DB_USER=root
-      - DB_PASSWORD=geo_db_password
+      - DB_PASSWORD=${DB_PASSWORD:-geo_db_password}
       - DB_NAME=geo_system
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -44,7 +45,7 @@ services:
     ports:
       - "3306:3306"
     environment:
-      - MYSQL_ROOT_PASSWORD=geo_db_password
+      - MYSQL_ROOT_PASSWORD=${DB_PASSWORD:-geo_db_password}
       - MYSQL_DATABASE=geo_system
     volumes:
       - mysql_data:/var/lib/mysql

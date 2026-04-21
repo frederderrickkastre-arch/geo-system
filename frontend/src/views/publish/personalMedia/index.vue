@@ -3,7 +3,8 @@
     <div class="page-card" style="margin-bottom: 16px">
       <el-alert title="请下载助手应用并使用设备授权码绑定您的自媒体账号" type="info" :closable="false" show-icon />
       <div style="margin-top: 12px; display: flex; align-items: center; gap: 16px">
-        <span>设备授权码：<strong style="font-size: 18px; color: #7c3aed">14387</strong></span>
+        <span>设备授权码：<strong style="font-size: 18px; color: #7c3aed">{{ deviceCode || '----' }}</strong></span>
+        <el-button size="small" @click="copyCode" :disabled="!deviceCode"><el-icon><CopyDocument /></el-icon>复制</el-button>
         <el-button type="primary"><el-icon><Download /></el-icon>下载助手</el-button>
       </div>
     </div>
@@ -38,6 +39,7 @@ import CrudTable from '@/components/CrudTable.vue'
 import request from '@/utils/request'
 
 const loading = ref(false); const tableData = ref<any[]>([]); const total = ref(0)
+const deviceCode = ref('')
 
 async function loadData() {
   loading.value = true
@@ -45,6 +47,19 @@ async function loadData() {
     const data = await request.get('/media/personal/accounts', { params: { page: 1, pageSize: 10 } })
     tableData.value = data.list; total.value = data.total
   } finally { loading.value = false }
+}
+
+async function loadDeviceCode() {
+  try {
+    const profile = await request.get('/user/profile')
+    deviceCode.value = profile.deviceCode || ''
+  } catch {}
+}
+
+function copyCode() {
+  if (!deviceCode.value) return
+  navigator.clipboard.writeText(deviceCode.value)
+  ElMessage.success('授权码已复制')
 }
 
 function handleSearch() { loadData() }
@@ -63,5 +78,8 @@ function handleBatchDelete(rows: any[]) {
   }).catch(() => {})
 }
 
-onMounted(loadData)
+onMounted(() => {
+  loadDeviceCode()
+  loadData()
+})
 </script>
