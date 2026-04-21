@@ -2,8 +2,19 @@ import { Router } from 'express'
 import { success, error, paginated } from '../../common/response'
 import { queryOne, execute, paginate } from '../../common/db'
 import { AuthRequest } from '../../common/auth.middleware'
+import { testAIConnection } from '../../common/ai.service'
 
 export const adminRouter = Router()
+
+// AI 连通性自检（读取当前 .env 配置，向中转站 / 厂商发一条最小请求）
+adminRouter.post('/ai/test', async (_req: AuthRequest, res) => {
+  try {
+    const result = await testAIConnection()
+    res.json(success(result))
+  } catch (e: any) {
+    res.json(error(e.message))
+  }
+})
 
 // 实名认证审核列表
 adminRouter.get('/verifications', async (req: AuthRequest, res) => {

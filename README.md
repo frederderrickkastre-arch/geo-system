@@ -54,6 +54,22 @@ docker-compose up -d
 
 管理员面板入口：登录后 → 右上角下拉菜单 → 管理员面板。
 
+### 接入 API 中转站
+
+如果你用的是 OpenAI 兼容协议的中转站（比如自建代理或各类聚合站点），在 `.env` 里填：
+
+```bash
+AI_PROVIDER=openai
+AI_API_KEY=sk-xxxxxxxxxxxx      # 中转站给你的 Key
+AI_BASE_URL=https://your-relay.example.com/v1    # 下面三种格式都可以
+#           https://your-relay.example.com
+#           https://your-relay.example.com/v1
+#           https://your-relay.example.com/v1/chat/completions
+AI_MODEL=deepseek-chat          # 中转站支持的模型名
+```
+
+填完 `docker-compose up -d --force-recreate backend`，然后登录 → 管理员面板 → **AI 服务连通性** → 点"立即自检"，绿色成功就可以用了。
+
 ## 功能模块
 
 ### AI 创作准备

@@ -2,7 +2,7 @@ import https from 'https'
 import http from 'http'
 
 export interface AIConfig {
-  provider: 'deepseek' | 'qianwen' | 'wenxin'
+  provider: 'deepseek' | 'qianwen' | 'wenxin' | 'openai'
   apiKey: string
   baseUrl?: string
   model?: string
@@ -16,28 +16,40 @@ function getConfig(): AIConfig {
   return { provider, apiKey, baseUrl, model }
 }
 
+/**
+ * 把用户提供的 base URL 规整成最终的 /chat/completions 完整地址。
+ * 常见中转站会给下面几种形式，都要能正确接上：
+ *   - https://api.example.com                 → 追加 /v1/chat/completions
+ *   - https://api.example.com/v1              → 追加 /chat/completions
+ *   - https://api.example.com/v1/             → 追加 chat/completions
+ *   - https://api.example.com/v1/chat/completions → 保持不变
+ */
+function normalizeChatUrl(base: string): string {
+  let url = base.trim().replace(/\/+$/, '')
+  if (url.endsWith('/chat/completions')) return url
+  if (url.endsWith('/v1')) return `${url}/chat/completions`
+  if (/\/v\d+$/.test(url)) return `${url}/chat/completions`
+  return `${url}/v1/chat/completions`
+}
+
 function getEndpoint(config: AIConfig): { url: string; model: string } {
+  if (config.baseUrl) {
+    return {
+      url: normalizeChatUrl(config.baseUrl),
+      model: config.model || 'deepseek-chat',
+    }
+  }
   switch (config.provider) {
     case 'deepseek':
-      return {
-        url: config.baseUrl || 'https://api.deepseek.com/v1/chat/completions',
-        model: config.model || 'deepseek-chat',
-      }
+      return { url: 'https://api.deepseek.com/v1/chat/completions', model: config.model || 'deepseek-chat' }
     case 'qianwen':
-      return {
-        url: config.baseUrl || 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
-        model: config.model || 'qwen-turbo',
-      }
+      return { url: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', model: config.model || 'qwen-turbo' }
     case 'wenxin':
-      return {
-        url: config.baseUrl || 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/completions',
-        model: config.model || 'ernie-bot',
-      }
+      return { url: 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/completions', model: config.model || 'ernie-bot' }
+    case 'openai':
+      return { url: 'https://api.openai.com/v1/chat/completions', model: config.model || 'gpt-4o-mini' }
     default:
-      return {
-        url: config.baseUrl || 'https://api.deepseek.com/v1/chat/completions',
-        model: config.model || 'deepseek-chat',
-      }
+      return { url: 'https://api.deepseek.com/v1/chat/completions', model: config.model || 'deepseek-chat' }
   }
 }
 
@@ -69,6 +81,40 @@ function httpPost(url: string, headers: Record<string, string>, body: string): P
     req.write(body)
     req.end()
   })
+}
+
+export interface AIInspectResult {
+  ok: boolean
+  provider: string
+  url: string
+  model: string
+  sample?: string
+  error?: string
+}
+
+export async function testAIConnection(): Promise<AIInspectResult> {
+  const config = getConfig()
+  const endpoint = getEndpoint(config)
+
+  if (!config.apiKey) {
+    return { ok: false, provider: config.provider, url: endpoint.url, model: endpoint.model, error: '未配置 AI_API_KEY' }
+  }
+
+  const body = JSON.stringify({
+    model: endpoint.model,
+    messages: [{ role: 'user', content: '请回复"连通性测试成功"四个字。' }],
+    temperature: 0,
+    max_tokens: 32,
+  })
+
+  try {
+    const text = await httpPost(endpoint.url, { Authorization: `Bearer ${config.apiKey}` }, body)
+    const json = JSON.parse(text)
+    const sample = json?.choices?.[0]?.message?.content || ''
+    return { ok: !!sample, provider: config.provider, url: endpoint.url, model: endpoint.model, sample }
+  } catch (e: any) {
+    return { ok: false, provider: config.provider, url: endpoint.url, model: endpoint.model, error: e?.message || String(e) }
+  }
 }
 
 export async function generateArticle(

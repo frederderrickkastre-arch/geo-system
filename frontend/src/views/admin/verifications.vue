@@ -7,6 +7,32 @@
       </div>
     </div>
 
+    <div class="page-card ai-test-card">
+      <div class="ai-test-header">
+        <div>
+          <strong>AI 服务连通性</strong>
+          <span class="desc">验证当前 .env 配置的 AI 服务商 / 中转站是否可用</span>
+        </div>
+        <el-button type="primary" :loading="aiTesting" @click="handleAiTest">立即自检</el-button>
+      </div>
+      <el-alert
+        v-if="aiResult"
+        :type="aiResult.ok ? 'success' : 'error'"
+        :closable="false"
+        show-icon
+        style="margin-top: 12px"
+      >
+        <template #title>
+          {{ aiResult.ok ? '✅ 连通正常' : '❌ 连通失败' }} · {{ aiResult.provider }} · {{ aiResult.model }}
+        </template>
+        <div class="ai-result-body">
+          <div><span class="k">请求地址：</span><code>{{ aiResult.url }}</code></div>
+          <div v-if="aiResult.sample"><span class="k">模型回复：</span>{{ aiResult.sample }}</div>
+          <div v-if="aiResult.error" class="err"><span class="k">错误信息：</span>{{ aiResult.error }}</div>
+        </div>
+      </el-alert>
+    </div>
+
     <CrudTable
       :data="tableData"
       :loading="loading"
@@ -74,6 +100,20 @@ const statusFilter = ref('pending')
 const searchText = ref('')
 
 const statCards = ref<{ label: string; value: number | string }[]>([])
+
+const aiTesting = ref(false)
+const aiResult = ref<any>(null)
+
+async function handleAiTest() {
+  aiTesting.value = true
+  try {
+    aiResult.value = await request.post('/admin/ai/test')
+  } catch (e: any) {
+    aiResult.value = { ok: false, provider: '-', url: '-', model: '-', error: e?.message || '请求失败' }
+  } finally {
+    aiTesting.value = false
+  }
+}
 
 async function loadStats() {
   try {
@@ -158,5 +198,19 @@ onMounted(() => {
   box-shadow: 0 2px 8px rgba(0,0,0,.04);
   .stat-label { font-size: 12px; color: #909399; }
   .stat-value { font-size: 22px; font-weight: 700; margin-top: 4px; color: #303133; }
+}
+.ai-test-card { margin-bottom: 16px; padding: 16px; }
+.ai-test-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  .desc { margin-left: 8px; color: #909399; font-size: 12px; }
+}
+.ai-result-body {
+  font-size: 13px;
+  line-height: 1.8;
+  .k { color: #606266; margin-right: 4px; }
+  code { background: rgba(0,0,0,.04); padding: 2px 6px; border-radius: 4px; word-break: break-all; }
+  .err { color: #f56c6c; }
 }
 </style>
