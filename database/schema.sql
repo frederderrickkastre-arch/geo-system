@@ -301,6 +301,67 @@ CREATE TABLE user_quotas (
   INDEX idx_user (user_id)
 );
 
+-- 发布任务表（个人自媒体 / SEO 站点 / 自媒体大V / 网站媒体）
+CREATE TABLE publish_tasks (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  user_id INT NOT NULL,
+  name VARCHAR(200) NOT NULL,
+  media_type ENUM('personal','seo','self','web') NOT NULL,
+  target VARCHAR(300) DEFAULT '' COMMENT '目标账号名称 或 目标站点域名',
+  target_id INT DEFAULT NULL,
+  article_count INT DEFAULT 0,
+  published_count INT DEFAULT 0,
+  status ENUM('pending','running','completed','failed') DEFAULT 'pending',
+  error_msg TEXT,
+  started_at DATETIME DEFAULT NULL,
+  completed_at DATETIME DEFAULT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_user (user_id),
+  INDEX idx_type (media_type)
+);
+
+-- 实名认证申请表
+CREATE TABLE verification_requests (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  user_id INT NOT NULL UNIQUE,
+  real_name VARCHAR(50) NOT NULL,
+  id_card VARCHAR(30) NOT NULL,
+  id_front VARCHAR(500) DEFAULT '',
+  id_back VARCHAR(500) DEFAULT '',
+  status ENUM('pending','approved','rejected') DEFAULT 'pending',
+  reject_reason VARCHAR(500) DEFAULT '',
+  submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  reviewed_at DATETIME DEFAULT NULL,
+  INDEX idx_user (user_id)
+);
+
+-- 关键词指数查询历史表
+CREATE TABLE keyword_index_logs (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  user_id INT NOT NULL,
+  keyword VARCHAR(200) NOT NULL,
+  baidu_index INT DEFAULT 0,
+  so_index INT DEFAULT 0,
+  sogou_index INT DEFAULT 0,
+  competition VARCHAR(20) DEFAULT '',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_user (user_id),
+  INDEX idx_keyword (keyword)
+);
+
+-- 手动拓词保存组
+CREATE TABLE manual_expand_groups (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  user_id INT NOT NULL,
+  main_keyword VARCHAR(200) NOT NULL,
+  words JSON,
+  word_count INT DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_user (user_id)
+);
+
 -- 插入默认管理演示账号
 INSERT INTO users (username, password, nickname, vip_expiry, status, verified, real_name) VALUES
 ('geo123', '$2a$10$rQkG7Kw0Z6CxVc2xDg8Kke2m1Yq5Xh0d3L4VJ5dN7uK8JxR3m9Hy', 'GEO演示', '2066-06-06', 1, 1, '演示号');
